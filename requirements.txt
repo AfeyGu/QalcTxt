@@ -1,0 +1,16 @@
+# QalcTxt Python计算器 依赖文件
+# 安装命令: pip install -r requirements.txt
+
+# 符号计算库 - 用于方程求解和高级数学功能
+sympy>=1.9.0
+
+# 数值计算库 - 用于高性能数值计算（可选）
+numpy>=1.21.0
+
+# 科学计算库 - 用于特殊数学函数（可选）
+scipy>=1.7.0
+
+# 注意：
+# - tkinter 是Python内置模块，无需安装
+# - math, re, json, os, datetime 等也是Python内置模块
+# - 只有 sympy 是必需的外部依赖，其他都是可选的
