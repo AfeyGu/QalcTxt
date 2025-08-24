@@ -11,8 +11,12 @@ class ExpressionParser:
     
     def __init__(self):
         """初始化解析器"""
-        # 行引用正则表达式：匹配 @数字[.数字]
-        self.line_ref_pattern = re.compile(r'@(\d+)(?:\.(\d+))?')
+        # 行引用正则表达式：匹配 @数字[.数字[.数字]]
+        # 支持以下格式：
+        # @3 - 第3行的结果
+        # @3.0 - 第3行的第一个解
+        # @3.1.0 - 第3行的第二个变量的第一个解
+        self.line_ref_pattern = re.compile(r'@(\d+)(?:\.(\d+)(?:\.(\d+))?)?')
         
     def parse_expression(self, text: str, results_manager=None) -> Tuple[str, bool, str]:
         """
@@ -78,15 +82,27 @@ class ExpressionParser:
         def replace_reference(match):
             line_num = int(match.group(1))
             solution_index = match.group(2)
+            variable_index = match.group(3)
             
-            if solution_index is not None:
-                solution_index = int(solution_index)
+            # 解析索引参数
+            sol_idx = int(solution_index) if solution_index is not None else None
+            var_idx = int(variable_index) if variable_index is not None else None
             
-            # 从结果管理器获取结果
-            result = results_manager.get_result(line_num, solution_index)
+            # 处理三级引用：@行号.变量索引.解索引
+            if var_idx is not None:
+                # 三级引用：解索引作为第二参数，变量索引作为第三参数
+                result = results_manager.get_result(line_num, sol_idx, var_idx)
+            else:
+                # 二级引用：@行号.解索引
+                result = results_manager.get_result(line_num, sol_idx)
             
             if result is None:
-                raise ValueError(f"第{line_num}行没有结果")
+                if var_idx is not None:
+                    raise ValueError(f"第{line_num}行的第{var_idx+1}个变量的第{sol_idx+1 if sol_idx is not None else 1}个解不存在")
+                elif sol_idx is not None:
+                    raise ValueError(f"第{line_num}行的第{sol_idx+1}个解不存在")
+                else:
+                    raise ValueError(f"第{line_num}行没有结果")
             
             # 如果结果是数值，直接返回
             if isinstance(result, (int, float, complex)):
@@ -109,13 +125,14 @@ class ExpressionParser:
             expression: 表达式
             
         Returns:
-            行引用列表，每个元素为(行号, 解索引)的元组
+            行引用列表，每个元素为(行号, 解索引, 变量索引)的元组
         """
         references = []
         for match in self.line_ref_pattern.finditer(expression):
             line_num = int(match.group(1))
             solution_index = int(match.group(2)) if match.group(2) else None
-            references.append((line_num, solution_index))
+            variable_index = int(match.group(3)) if match.group(3) else None
+            references.append((line_num, solution_index, variable_index))
         return references
     
     def validate_syntax(self, expression: str) -> Tuple[bool, str]:

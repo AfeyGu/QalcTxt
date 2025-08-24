@@ -388,17 +388,20 @@ class TextEditorComponent:
             
             # 使用正则表达式查找所有@引用
             import re
-            pattern = r'@(\d+)(?:\.(\d+))?'
+            pattern = r'@(\d+)(?:\.(\d+)(?:\.(\d+))?)?'
             
             def replace_reference(match):
                 line_ref = int(match.group(1))
-                solution_index = match.group(2)
+                first_index = match.group(2)
+                second_index = match.group(3)
                 
                 # 如果引用的行号大于等于插入位置，则需要加上插入的行数
                 if line_ref >= insert_line:
                     new_line_ref = line_ref + lines_added
-                    if solution_index:
-                        return f'@{new_line_ref}.{solution_index}'
+                    if second_index:
+                        return f'@{new_line_ref}.{first_index}.{second_index}'
+                    elif first_index:
+                        return f'@{new_line_ref}.{first_index}'
                     else:
                         return f'@{new_line_ref}'
                 else:
@@ -440,11 +443,12 @@ class TextEditorComponent:
             
             # 使用正则表达式查找所有@引用
             import re
-            pattern = r'@(\d+)(?:\.(\d+))?'
+            pattern = r'@(\d+)(?:\.(\d+)(?:\.(\d+))?)?'
             
             def replace_reference(match):
                 line_ref = int(match.group(1))
-                solution_index = match.group(2)
+                first_index = match.group(2)
+                second_index = match.group(3)
                 
                 # 判断引用的行号位置
                 if line_ref < delete_line:
@@ -456,8 +460,10 @@ class TextEditorComponent:
                 else:
                     # 在删除范围之后的引用，减去删除的行数
                     new_line_ref = line_ref - lines_deleted
-                    if solution_index:
-                        return f'@{new_line_ref}.{solution_index}'
+                    if second_index:
+                        return f'@{new_line_ref}.{first_index}.{second_index}'
+                    elif first_index:
+                        return f'@{new_line_ref}.{first_index}'
                     else:
                         return f'@{new_line_ref}'
             

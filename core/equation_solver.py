@@ -137,13 +137,73 @@ class EquationSolver:
                                 result_parts.append(f"{var} = {value}")
                     return ", ".join(result_parts)
                 else:
-                    # 多解情况
-                    return str(solutions)
+                    # 多解情况 - 使用新的格式化方法
+                    return self._format_multi_solution_system(solutions, variables, symbols_dict)
             else:
                 return str(solutions)
                 
         except Exception as e:
             raise ValueError(f"方程组求解失败: {str(e)}")
+    
+    def _format_multi_solution_system(self, solutions, variables, symbols_dict):
+        """
+        格式化多解方程组结果，支持复杂引用
+        
+        Args:
+            solutions: 解的列表
+            variables: 变量列表
+            symbols_dict: 符号字典
+            
+        Returns:
+            格式化的结果字符串
+        """
+        try:
+            result_parts = []
+            
+            # 为每个变量格式化结果
+            for var_idx, var in enumerate(variables):
+                var_solutions = []
+                
+                # 提取该变量在所有解中的值
+                for sol_idx, solution in enumerate(solutions):
+                    if isinstance(solution, tuple) and len(solution) == len(variables):
+                        # 元组格式的解
+                        value = solution[var_idx]
+                    elif isinstance(solution, dict) and symbols_dict[var] in solution:
+                        # 字典格式的解
+                        value = solution[symbols_dict[var]]
+                    else:
+                        continue
+                    
+                    try:
+                        # 尝试转换为数值
+                        if hasattr(value, 'evalf'):
+                            numeric_value = float(value.evalf())
+                            if abs(numeric_value - round(numeric_value)) < 1e-10:
+                                var_solutions.append(str(int(round(numeric_value))))
+                            else:
+                                var_solutions.append(f"{numeric_value:.10g}")
+                        else:
+                            var_solutions.append(str(value))
+                    except:
+                        var_solutions.append(str(value))
+                
+                # 格式化该变量的所有解
+                if var_solutions:
+                    if len(var_solutions) == 1:
+                        result_parts.append(f"{var} = {var_solutions[0]}")
+                    else:
+                        # 多解格式: var[0] = val1, var[1] = val2
+                        var_results = []
+                        for i, val in enumerate(var_solutions):
+                            var_results.append(f"{var}[{i}] = {val}")
+                        result_parts.append(", ".join(var_results))
+            
+            return "; ".join(result_parts)
+            
+        except Exception as e:
+            # 如果格式化失败，返回原始结果
+            return str(solutions)
     
     def _preprocess_equation(self, equation_str: str) -> str:
         """

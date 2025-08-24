@@ -28,11 +28,13 @@ class ResultData:
         self.result_type = result_type
         self.is_equation = is_equation
         self.timestamp = datetime.now()
-        self.solutions = []  # 用于存储多解
+        self.solutions = []  # 用于存储单变量多解
+        self.variable_solutions = {}  # 用于存储多变量的解
         
         # 如果是方程结果，提取数值解
         if is_equation and isinstance(result, str):
             self.solutions = self._extract_numeric_solutions(result)
+            self.variable_solutions = self.extract_variable_solutions(result)
     
     def _extract_numeric_solutions(self, formatted_result: str) -> List[float]:
         """
@@ -47,7 +49,7 @@ class ResultData:
         solutions = []
         
         # 匹配 x[i] = 数值 的模式
-        pattern = r'x\[\d+\]\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)'
+        pattern = r'x\[\d+\]\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)'  
         matches = re.findall(pattern, formatted_result)
         
         for match in matches:
@@ -58,7 +60,7 @@ class ResultData:
         
         # 如果没有找到多解格式，尝试匹配单解格式 x = 数值
         if not solutions:
-            pattern = r'x\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)'
+            pattern = r'x\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)'  
             match = re.search(pattern, formatted_result)
             if match:
                 try:
@@ -67,6 +69,68 @@ class ResultData:
                     pass
         
         return solutions
+    
+    def extract_variable_solutions(self, formatted_result: str) -> dict:
+        """
+        从格式化结果中提取所有变量的解
+        支持复杂的方程组结果
+        
+        Args:
+            formatted_result: 格式化的结果字符串
+            
+        Returns:
+            {variable_name: [solution1, solution2, ...], ...}
+        """
+        variable_solutions = {}
+        
+        # 尝试匹配方程组结果格式: var[0] = val1, var[1] = val2; var2[0] = val3, var2[1] = val4
+        # 按分号分割变量组
+        if ';' in formatted_result:
+            variable_groups = formatted_result.split(';')
+            for group in variable_groups:
+                group = group.strip()
+                # 匹配 var[i] = value 的模式
+                matches = re.findall(r'([a-zA-Z]\w*)\[(\d+)\]\s*=\s*([-+]?[\d\.e\-\+\*/\(\)\w\s]+)', group)
+                for var_name, index, value_str in matches:
+                    if var_name not in variable_solutions:
+                        variable_solutions[var_name] = []
+                    
+                    # 确保列表长度足够
+                    index = int(index)
+                    while len(variable_solutions[var_name]) <= index:
+                        variable_solutions[var_name].append(None)
+                    
+                    try:
+                        # 尝试转换为数值
+                        if '/' in value_str or 'sqrt' in value_str:
+                            # 包含复杂表达式，保留原始形式
+                            variable_solutions[var_name][index] = value_str.strip()
+                        else:
+                            numeric_value = float(value_str)
+                            if abs(numeric_value - round(numeric_value)) < 1e-10:
+                                variable_solutions[var_name][index] = int(round(numeric_value))
+                            else:
+                                variable_solutions[var_name][index] = numeric_value
+                    except:
+                        variable_solutions[var_name][index] = value_str.strip()
+        
+        # 如果没有找到复杂格式，尝试简单格式: var = value
+        if not variable_solutions:
+            simple_matches = re.findall(r'([a-zA-Z]\w*)\s*=\s*([-+]?[\d\.e\-\+\*/\(\)\w\s]+)', formatted_result)
+            for var_name, value_str in simple_matches:
+                try:
+                    if '/' in value_str or 'sqrt' in value_str:
+                        variable_solutions[var_name] = [value_str.strip()]
+                    else:
+                        numeric_value = float(value_str)
+                        if abs(numeric_value - round(numeric_value)) < 1e-10:
+                            variable_solutions[var_name] = [int(round(numeric_value))]
+                        else:
+                            variable_solutions[var_name] = [numeric_value]
+                except:
+                    variable_solutions[var_name] = [value_str.strip()]
+        
+        return variable_solutions
 
 class ResultManager:
     """结果管理器类"""
@@ -103,13 +167,16 @@ class ResultManager:
         self.results[line_number] = result_data
         self.max_line = max(self.max_line, line_number)
     
-    def get_result(self, line_number: int, solution_index: Optional[int] = None) -> Union[float, int, complex, str, None]:
+    def get_result(self, line_number: int, solution_index: Optional[int] = None, 
+                   variable_index: Optional[int] = None) -> Union[float, int, complex, str, None]:
         """
         获取指定行的结果
+        支持复杂引用格式: @行号.变量索引.解索引
         
         Args:
             line_number: 行号
             solution_index: 解的索引（用于多解情况）
+            variable_index: 变量索引（用于多变量情况）
             
         Returns:
             计算结果或None
@@ -123,6 +190,27 @@ class ResultManager:
         if result_data.result_type == "error":
             return None
         
+        # 处理复杂引用格式: @行号.变量索引.解索引
+        if variable_index is not None and result_data.variable_solutions:
+            # 获取变量名列表
+            variable_names = list(result_data.variable_solutions.keys())
+            if 0 <= variable_index < len(variable_names):
+                var_name = variable_names[variable_index]
+                var_solutions = result_data.variable_solutions[var_name]
+                
+                if solution_index is not None:
+                    # 指定解索引
+                    if 0 <= solution_index < len(var_solutions):
+                        return var_solutions[solution_index]
+                    else:
+                        return None
+                else:
+                    # 返回第一个解
+                    return var_solutions[0] if var_solutions else None
+            else:
+                return None
+        
+        # 处理传统引用格式
         # 如果请求特定解的索引
         if solution_index is not None:
             if result_data.is_equation and result_data.solutions:
